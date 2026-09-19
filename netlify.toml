@@ -1,0 +1,24 @@
+# The app is plain static files at the repository root: nothing to build.
+# Setting publish here makes the deploy explicit and overrides whatever the
+# Netlify UI has, so the site cannot end up pointed at the wrong directory.
+[build]
+  publish = "."
+  command = ""
+
+# The page and the service worker must always be revalidated. Without this a
+# CDN copy can keep serving an old build even after sw.js has a new
+# CACHE_VERSION, which is the one thing that makes an installed PWA go stale.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
