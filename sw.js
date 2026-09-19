@@ -2,7 +2,7 @@
    CACHE_VERSION is the content hash of the files below and is regenerated
    whenever any of them change, so an installed copy never keeps serving a
    stale build. */
-var CACHE_VERSION = 'ucn-mess-log-066054dacc42';
+var CACHE_VERSION = 'ucn-mess-log-faee6ef543e3';
 
 var ASSETS = [
   './',

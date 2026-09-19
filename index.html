@@ -164,6 +164,10 @@ select option{ color:#16204a; background:#ffffff; }
   text-transform:none; letter-spacing:normal; margin-bottom:0;
 }
 .btn-secondary:active{ background:rgba(255,255,255,0.09); }
+#repeatBtn{
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
 /* A size variant of the secondary button, for use inside a card. */
 .btn-compact{ padding:8px; font-size:12px; margin-top:9px; }
 
@@ -404,6 +408,9 @@ select option{ color:#16204a; background:#ffffff; }
     </div>
     <div style="margin-top:12px">
       <button type="button" class="btn-primary" id="logBtn">Log drink</button>
+    </div>
+    <div style="margin-top:8px">
+      <button type="button" class="btn-secondary" id="repeatBtn" hidden></button>
     </div>
 
     <h2 class="section-title">This session</h2>
@@ -1670,9 +1677,31 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     return out;
   }
 
+  /* The most recent entry logged on a date, or null. */
+  function lastEntryForDate(ymd) {
+    var list = entriesForDate(ymd);
+    return list.length ? list[list.length - 1] : null;
+  }
+
+  function renderRepeat() {
+    var btn = $('repeatBtn');
+    var last = lastEntryForDate($('lDate').value);
+    if (!last) {
+      btn.hidden = true;
+      btn.removeAttribute('data-repeat');
+      return;
+    }
+    btn.hidden = false;
+    btn.setAttribute('data-repeat', last.id);
+    btn.textContent = 'Repeat ' + last.drink;
+    btn.setAttribute('aria-label',
+      'Log ' + last.drink + ' again, ' + last.stars + ' out of 5');
+  }
+
   function renderSession() {
     var ymd = $('lDate').value;
     var list = entriesForDate(ymd);
+    renderRepeat();
     var sub = $('sessSub');
     if (isValidYMD(ymd)) {
       sub.textContent = fmtDate(ymd) + ' · ' + list.length +
@@ -2953,6 +2982,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       if ($('lDrink').value === '__other__') { $('lDrinkOther').focus(); }
     });
     $('logBtn').addEventListener('click', logDrink);
+    $('repeatBtn').addEventListener('click', repeatLast);
 
     /* ---- Menu ---- */
     var segs = $('menuFilter').querySelectorAll('button');
@@ -3041,6 +3071,30 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     $('lNotes').value = '';
 
     renderAll();
+  }
+
+  /* Another of the same, on the same date. The score carries over because
+     "same again" usually means the same drink at the same mark; the notes
+     do not, because they described that glass. Both are editable after. */
+  function repeatLast() {
+    var last = lastEntryForDate($('lDate').value);
+    if (!last) { return; }
+    var now = new Date().toISOString();
+    var entry = {
+      id: uid(),
+      date: last.date,
+      drink: last.drink,
+      category: last.category,
+      stars: last.stars,
+      notes: '',
+      createdAt: now,
+      updatedAt: now
+    };
+    state.entries.push(entry);
+    setTried(entry.drink, true);
+    saveRecord();
+    renderAll();
+    toast('Logged ' + entry.drink + ' again, ' + entry.stars + '/5');
   }
 
   function measureHeader() {
