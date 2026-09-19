@@ -164,6 +164,9 @@ select option{ color:#16204a; background:#ffffff; }
   text-transform:none; letter-spacing:normal; margin-bottom:0;
 }
 .btn-secondary:active{ background:rgba(255,255,255,0.09); }
+/* A size variant of the secondary button, for use inside a card. */
+.btn-compact{ padding:8px; font-size:12px; margin-top:9px; }
+
 .btn-danger{
   display:block; width:100%; cursor:pointer;
   background:rgba(178,58,58,0.18); border:1px solid var(--red);
@@ -372,7 +375,8 @@ select option{ color:#16204a; background:#ffffff; }
   <!-- ============ LOG ============ -->
   <section class="panel" id="panel-log" role="tabpanel" aria-labelledby="tab-log" hidden>
     <h2 class="section-title">Log a drink</h2>
-    <p class="section-sub">Saved under the date below. Logging a drink also marks it as tried.</p>
+    <p class="section-sub">Saved under the date below. Logging a drink also marks it as tried.
+      For anything not on the list, choose &ldquo;Other / off-menu&hellip;&rdquo;.</p>
     <div class="card">
       <div class="field">
         <label for="lDate">Date</label>
@@ -418,6 +422,9 @@ select option{ color:#16204a; background:#ffffff; }
       <button type="button" data-f="tried" aria-pressed="false">Tried</button>
     </div>
     <div id="menuList"></div>
+    <div style="margin-top:12px">
+      <button type="button" class="btn-secondary" id="addDrinkBtn">Add a drink</button>
+    </div>
   </section>
 
   <!-- ============ HISTORY ============ -->
@@ -880,7 +887,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   var MAX_JSON_BYTES = 5 * 1024 * 1024;
 
   var SEL_PLACEHOLDER = '— Select —';
-  var OTHER = 'Other…';
+  var OTHER_RANK = 'Other…';
+  var OTHER_DRINK = 'Other / off-menu…';
 
   /* =====================================================================
      Small helpers
@@ -1281,6 +1289,27 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     return n;
   }
 
+  /* Drinks that have been logged or marked tried but are not on the current
+     menu. Display names keep the casing they were stored with; the entries'
+     casing wins over a tried-list entry for the same drink. */
+  function offMenuDrinks() {
+    var onMenu = bareMap(), seen = bareMap(), out = [], i, k;
+    for (i = 0; i < state.menu.length; i++) { onMenu[normName(state.menu[i].name)] = true; }
+    for (i = 0; i < state.entries.length; i++) {
+      k = normName(state.entries[i].drink);
+      if (mapHas(onMenu, k) || mapHas(seen, k)) { continue; }
+      seen[k] = true;
+      out.push(state.entries[i].drink);
+    }
+    for (i = 0; i < state.tried.length; i++) {
+      k = normName(state.tried[i]);
+      if (mapHas(onMenu, k) || mapHas(seen, k)) { continue; }
+      seen[k] = true;
+      out.push(state.tried[i]);
+    }
+    return out;
+  }
+
   /* normName(drink) -> { count, sum } over log entries. */
   function buildDrinkStats() {
     var m = bareMap(), i, k;
@@ -1559,7 +1588,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     for (i = 0; i < RANKS.length; i++) {
       html += '<option value="' + escAttr(RANKS[i]) + '">' + esc(RANKS[i]) + '</option>';
     }
-    html += '<option value="__other__">' + esc(OTHER) + '</option>';
+    html += '<option value="__other__">' + esc(OTHER_RANK) + '</option>';
     sel.innerHTML = html;
   }
 
@@ -1620,7 +1649,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       html += '<optgroup label="' + escAttr(c === '' ? 'Uncategorised' : c) + '">' +
         any + '</optgroup>';
     }
-    html += '<option value="__other__">' + esc(OTHER) + '</option>';
+    html += '<option value="__other__">' + esc(OTHER_DRINK) + '</option>';
     sel.innerHTML = html;
     /* Keep the selection if that drink is still on the menu. */
     sel.value = prev;
@@ -1674,8 +1703,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     $('menuProgress').textContent = tried + ' of ' + total + ' tried';
 
     var host = $('menuList');
-    if (!total) {
-      host.innerHTML = '<p class="empty">No drinks on the menu. Import a CSV in Setup.</p>';
+    if (!total && !offMenuDrinks().length) {
+      host.innerHTML = '<p class="empty">No drinks on the menu. ' +
+        'Add one below, or import a CSV in Setup.</p>';
       return;
     }
 
@@ -1724,6 +1754,46 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       '</div>' + rows;
     }
 
+    /* Drinks logged or marked tried that are not on the menu. Without this
+       group their tried mark is invisible and can never be removed. */
+    var off = offMenuDrinks(), offRows = '', offTried = 0, oi;
+    for (oi = 0; oi < off.length; oi++) {
+      var od = off[oi], ot = isTried(od);
+      if (ot) { offTried++; }
+      if (menuFilter === 'tried' && !ot) { continue; }
+      if (menuFilter === 'totry' && ot) { continue; }
+      shown++;
+
+      var ost = stats[normName(od)], oStatHTML = '';
+      if (ost && ost.count) {
+        oStatHTML = '<span class="drink-stat">Logged ' + ost.count +
+          (ost.count === 1 ? ' time' : ' times') +
+          ', average ' + avgOf(ost).toFixed(1) + '/5</span>';
+      }
+      var oid = 'off_' + oi;
+      offRows += '<div class="card" style="margin-bottom:8px">' +
+        '<div class="drink-top">' +
+          '<span class="drink-name">' + esc(od) + '</span>' +
+        '</div>' +
+        '<div class="drink-foot">' +
+          '<input type="checkbox" role="switch" class="switch" id="' + oid +
+            '" data-drink="' + escAttr(od) + '"' + (ot ? ' checked' : '') + '>' +
+          '<label for="' + oid + '" style="margin:0">Tried</label>' +
+          oStatHTML +
+        '</div>' +
+        '<button type="button" class="btn-secondary btn-compact" data-add="' +
+          escAttr(od) + '">Add to menu</button>' +
+      '</div>';
+    }
+    if (offRows !== '') {
+      html += '<div class="cat-head">' +
+        '<h3 class="section-title">Off menu</h3>' +
+        '<span class="cat-count">' + offTried + '/' + off.length + '</span>' +
+      '</div>' +
+      '<p class="section-sub">Logged but not on the menu. Add one to keep it.</p>' +
+      offRows;
+    }
+
     if (!shown) {
       html = '<p class="empty">' + (menuFilter === 'totry'
         ? 'You have tried everything on this menu.'
@@ -1735,11 +1805,85 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     for (k = 0; k < sw.length; k++) {
       sw[k].addEventListener('change', function (e) {
         var name = e.currentTarget.getAttribute('data-drink');
-        setTried(name, e.currentTarget.checked);
+        var on = e.currentTarget.checked;
+        /* An off-menu drink with no log entries is only on this list because
+           of its tried mark, so clearing the mark removes the row. Say so,
+           rather than letting it vanish under the user's finger. */
+        var vanishes = !on && !lookupMenuItem(name) &&
+          !(stats[normName(name)] && stats[normName(name)].count);
+        setTried(name, on);
         saveRecord();
         renderMenu();
+        if (vanishes) { toast('Removed the tried mark for ' + name); }
       });
     }
+    var addBtns = host.querySelectorAll('[data-add]');
+    for (k = 0; k < addBtns.length; k++) {
+      addBtns[k].addEventListener('click', function (e) {
+        openAddDrinkSheet(e.currentTarget.getAttribute('data-add'));
+      });
+    }
+  }
+
+  /* Add a drink to the menu, or promote an off-menu one (name pre-filled). */
+  function openAddDrinkSheet(prefillName) {
+    var promoting = !!prefillName;
+    openSheet({
+      title: promoting ? 'Add to menu' : 'Add a drink',
+      bodyHTML:
+        '<p>' + (promoting
+          ? 'This keeps ' + esc(prefillName) + ' on your menu, with its log ' +
+            'entries and tried mark.'
+          : 'Adds one drink to your menu list. A CSV import replaces the ' +
+            'whole list, including this.') + '</p>' +
+        '<div class="field"><label for="aName">Name</label>' +
+          '<input type="text" id="aName" autocomplete="off" value="' +
+          escAttr(prefillName || '') + '"></div>' +
+        '<div class="field"><label for="aCat">Category</label>' +
+          '<input type="text" id="aCat" autocomplete="off" placeholder="Optional"></div>' +
+        '<div class="row">' +
+          '<div class="field"><label for="aPrice">Price</label>' +
+            '<input type="text" id="aPrice" autocomplete="off" placeholder="Optional"></div>' +
+        '</div>' +
+        '<div class="field"><label for="aDesc">Description</label>' +
+          '<textarea id="aDesc" placeholder="Optional"></textarea></div>' +
+        '<button type="button" class="btn-primary" data-act="save">Add drink</button>' +
+        '<div style="height:8px"></div>' +
+        '<button type="button" class="btn-secondary" data-act="cancel">Cancel</button>',
+      onMount: function (sheet) {
+        var nameIn = sheet.querySelector('#aName');
+        sheet.querySelector('[data-act="cancel"]').addEventListener('click', closeSheet);
+        sheet.querySelector('[data-act="save"]').addEventListener('click', function () {
+          var name = trimc(nameIn.value);
+          if (name === '') { toast('Name the drink'); nameIn.focus(); return; }
+          if (lookupMenuItem(name)) {
+            toast(name + ' is already on the menu');
+            nameIn.focus();
+            return;
+          }
+          state.menu.push({
+            category: trimc(sheet.querySelector('#aCat').value),
+            name: name,
+            price: trimc(sheet.querySelector('#aPrice').value),
+            description: trimc(sheet.querySelector('#aDesc').value),
+            source: 'Added by me'
+          });
+          saveMenu();
+          closeSheet();
+          renderAll();
+          toast('Added ' + name + ' to the menu');
+        });
+        if (promoting) { sheet.querySelector('#aCat').focus(); }
+      }
+    });
+  }
+
+  function lookupMenuItem(name) {
+    var k = normName(name), i;
+    for (i = 0; i < state.menu.length; i++) {
+      if (normName(state.menu[i].name) === k) { return state.menu[i]; }
+    }
+    return null;
   }
 
   /* =====================================================================
@@ -1818,7 +1962,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       optHTML += '<optgroup label="' +
         escAttr(cats[i] === '' ? 'Uncategorised' : cats[i]) + '">' + any + '</optgroup>';
     }
-    optHTML += '<option value="__other__">' + esc(OTHER) + '</option>';
+    optHTML += '<option value="__other__">' + esc(OTHER_DRINK) + '</option>';
 
     openSheet({
       title: 'Edit entry',
@@ -1916,11 +2060,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   /* The category a drink sits in on the current menu, or '' when it is
      not on the menu (an "Other…" drink). */
   function lookupCategory(name) {
-    var k = normName(name), i;
-    for (i = 0; i < state.menu.length; i++) {
-      if (normName(state.menu[i].name) === k) { return state.menu[i].category; }
-    }
-    return '';
+    var it = lookupMenuItem(name);
+    return it ? it.category : '';
   }
 
   /* =====================================================================
@@ -2826,6 +2967,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
         renderMenu();
       });
     }
+
+    $('addDrinkBtn').addEventListener('click', function () { openAddDrinkSheet(''); });
 
     /* ---- History ---- */
     $('pdfBtn').addEventListener('click', exportPDF);
